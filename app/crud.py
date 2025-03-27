@@ -2,10 +2,10 @@ import pandas as pd
 from settings import conn, cursor
 
 
-def create_registro(data, categoria, descricao, horas):
+def create_registro(data, categoria, descricao, minutos):
     cursor.execute(
-        "INSERT INTO registros (data, categoria, descricao, horas) VALUES (?, ?, ?, ?)",
-        (data, categoria, descricao, horas),
+        "INSERT INTO registros (data, categoria, descricao, minutos) VALUES (?, ?, ?, ?)",
+        (data, categoria, descricao, minutos),
     )
     conn.commit()
 
@@ -25,10 +25,10 @@ def read_registros(filtro_categoria="Todas", data_inicio=None, data_fim=None):
     return pd.read_sql(query, conn)
 
 
-def update_registro(id, data, categoria, descricao, horas):
+def update_registro(id, data, categoria, descricao, minutos):
     cursor.execute(
-        "UPDATE registros SET data=?, categoria=?, descricao=?, horas=? WHERE id=?",
-        (data, categoria, descricao, horas, id),
+        "UPDATE registros SET data=?, categoria=?, descricao=?, minutos=? WHERE id=?",
+        (data, categoria, descricao, minutos, id),
     )
     conn.commit()
 

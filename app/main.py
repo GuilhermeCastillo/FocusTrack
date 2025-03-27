@@ -12,13 +12,13 @@ CREATE TABLE IF NOT EXISTS registros (
     data DATE,
     categoria TEXT,
     descricao TEXT,
-    horas FLOAT
+    minutos INTEGER  -- Alterado para minutos
 )
 """
 )
 conn.commit()
 
-st.title("📊 Gestor de Produtividade")
+st.title("📊 FocusTrack")
 
 tab1, tab2 = st.tabs(["Registro & Dashboard", "Editar/Excluir"])
 
@@ -29,58 +29,74 @@ with tab1:
             with col1:
                 data = st.date_input("Data", datetime.now())
             with col2:
-                horas = st.number_input("Horas", 0.5, 24.0, 1.0, step=0.5)
+                minutos = st.number_input(
+                    "minutos",
+                    min_value=1,
+                    max_value=1440,  # 24h*60min
+                    value=30,  # Valor padrão
+                    step=1,
+                )
 
             categoria = st.selectbox("Categoria", ["ESTUDOS", "PROJETOS", "TREINOS"])
             descricao = st.text_input("Descrição")
 
             if st.form_submit_button("Salvar"):
-                create_registro(data, categoria, descricao, horas)
+                create_registro(data, categoria, descricao, minutos)
                 st.success("Registro criado!")
 
-    st.divider()
-    st.subheader("Filtros")
-    col1, col2 = st.columns(2)
-    with col1:
+    with st.sidebar:
+        st.subheader("Filtros")
+
         filtro_categoria = st.selectbox(
             "Categoria", ["Todas", "ESTUDOS", "PROJETOS", "TREINOS"]
         )
-    with col2:
+
         periodo = st.selectbox(
             "Período", ["Todo o período", "Últimos 7 dias", "Este mês"]
         )
 
-    data_inicio, data_fim = None, None
-    if periodo == "Últimos 7 dias":
-        data_fim = datetime.now().date()
-        data_inicio = data_fim - timedelta(days=7)
-    elif periodo == "Este mês":
-        data_fim = datetime.now().date()
-        data_inicio = data_fim.replace(day=1)
+        data_inicio, data_fim = None, None
+        if periodo == "Últimos 7 dias":
+            data_fim = datetime.now().date()
+            data_inicio = data_fim - timedelta(days=7)
+        elif periodo == "Este mês":
+            data_fim = datetime.now().date()
+            data_inicio = data_fim.replace(day=1)
 
     df = read_registros(filtro_categoria, data_inicio, data_fim)
 
-    st.metric("Total de Horas", f"{df['horas'].sum():.1f}h")
-    st.bar_chart(df.groupby("categoria")["horas"].sum())
+    st.divider()
+    st.subheader("Estatísticas")
 
-    st.dataframe(
-        df.sort_values("data", ascending=False),
-        hide_index=True,
-        use_container_width=True,
-    )
+    df["horas"] = df["minutos"] / 60
 
+    total_minutos = df["minutos"].sum()
+    st.metric("Total de Tempo", f"{total_minutos} min ({total_minutos/60:.1f}h)")
+
+    st.bar_chart(df.groupby("categoria")["horas"].sum(), color=["#fd0"])
+
+    with st.expander("Visualizar Tabela"):
+        st.dataframe(
+            df.assign(horas=lambda x: round(x["minutos"] / 60, 1))[
+                ["data", "categoria", "descricao", "minutos", "horas"]
+            ].sort_values("data", ascending=False),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+# --- EDITAR REGISTROS  ---
 with tab2:
-    st.subheader("Editar ou Excluir Registros")
+    st.subheader("Editar Registros")
 
-    df_editar = read_registros()
+    df_editar = pd.read_sql("SELECT * FROM registros", conn)
 
-    registro_selecionado = st.selectbox(
-        "Selecione um registro para editar",
-        df_editar["id"],
-        format_func=lambda x: f"ID {x} - {df_editar[df_editar['id']==x].iloc[0]['descricao']}",
-    )
+    if not df_editar.empty:
+        registro_selecionado = st.selectbox(
+            "Selecione um registro",
+            df_editar["id"],
+            format_func=lambda x: f"ID {x} - {df_editar[df_editar['id']==x].iloc[0]['descricao']} ({df_editar[df_editar['id']==x].iloc[0]['minutos']} min)",
+        )
 
-    if registro_selecionado:
         dados_registro = df_editar[df_editar["id"] == registro_selecionado].iloc[0]
 
         with st.form("form_edit"):
@@ -93,19 +109,28 @@ with tab2:
                 ),
             )
             descricao = st.text_input("Descrição", dados_registro["descricao"])
-            horas = st.number_input(
-                "Horas", 0.5, 24.0, float(dados_registro["horas"]), step=0.5
+            minutos = st.number_input(
+                "Minutos",
+                min_value=1,
+                max_value=1440,
+                value=int(dados_registro["minutos"]),
+                step=1,
             )
 
             col1, col2 = st.columns(2)
             with col1:
                 if st.form_submit_button("💾 Atualizar"):
                     update_registro(
-                        registro_selecionado, data, categoria, descricao, horas
+                        registro_selecionado, data, categoria, descricao, minutos
                     )
                     st.success("Registro atualizado!")
             with col2:
                 if st.form_submit_button("🗑️ Excluir"):
-                    delete_registro(registro_selecionado)
+                    cursor.execute(
+                        "DELETE FROM registros WHERE id=?", (registro_selecionado,)
+                    )
+                    conn.commit()
                     st.success("Registro excluído!")
                     st.rerun()
+    else:
+        st.warning("Nenhum registro encontrado para edição.")
